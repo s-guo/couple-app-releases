@@ -1,0 +1,49 @@
+name: Publish TestFlight release feed
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight-release-feed
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    # Enable only in the public release-feed repository configured for Pages.
+    if: vars.RELEASE_FEED_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify release publishing rules
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+      - name: Read the available build for this app's tester group
+        env:
+          ASC_APP_ID: ${{ vars.ASC_APP_ID }}
+          ASC_BETA_GROUP: ${{ vars.ASC_BETA_GROUP }}
+          APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
+          REQUIRE_LATEST_BUILD: ${{ vars.REQUIRE_LATEST_BUILD || 'false' }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: python3 scripts/publish_testflight_release.py _release_site
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _release_site
+  deploy:
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
